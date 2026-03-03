@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import os
 from dotenv import load_dotenv
-from st_keyup import st_keyup
 
 # Charger les variables d'environnement (check local puis parent pour compatibilité Docker/Local)
 if os.path.exists('.env'):
@@ -167,7 +166,11 @@ def main():
     st.markdown('<p style="color: #94A3B8; font-size: 1.15rem; margin-bottom: 2.5rem; font-weight: 500;">Filtrage de précision et exploration profonde.</p>', unsafe_allow_html=True)
     
     # Champ de recherche en temps réel principal
-    title_prefix = st_keyup("Recherche de titre...", value="", key="main_title_search", placeholder="Nom du film...")
+    title_prefix = st.text_input(
+    "Recherche de titre...",
+    key="main_title_search",
+    placeholder="Nom du film..."
+)
     
     # --- INITIALISATION DE LA SESSION (PAGINATION) ---
     if 'page' not in st.session_state:
