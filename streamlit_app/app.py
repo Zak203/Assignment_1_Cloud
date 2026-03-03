@@ -3,13 +3,12 @@ import requests
 import os
 from dotenv import load_dotenv
 
-# Charger les variables d'environnement (check local puis parent pour compatibilité Docker/Local)
 if os.path.exists('.env'):
     load_dotenv('.env')
 else:
     load_dotenv(dotenv_path='../.env')
 
-st.set_page_config(page_title="Cinéma Explorer", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="Assignment 1 Movies", page_icon="🎬", layout="wide")
 
 def apply_custom_styles():
     st.markdown(
@@ -77,6 +76,40 @@ def apply_custom_styles():
         /* Details Styling */
         .synopsis-text { color: #94A3B8; line-height: 1.8; font-size: 1.05rem; }
         .custom-divider { height: 1px; background: linear-gradient(to right, rgba(255,255,255,0.1), transparent); margin: 25px 0; }
+        
+        /* Movie Grid Cards */
+        .grid-card {
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(8px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 22px;
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+        .grid-card:hover {
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
+            transform: translateY(-2px);
+        }
+        .grid-card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+        .grid-card-year {
+            font-size: 0.85rem;
+            color: #64748B;
+            margin-bottom: 12px;
+        }
+        .grid-card-rating {
+            font-size: 1rem;
+            color: #FACC15;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
         </style>
         """,
         unsafe_allow_html=True
@@ -90,8 +123,6 @@ def fetch_filtered_movies(filters):
         response = requests.post(cloud_function_url, json=filters)
         response.raise_for_status()
         data = response.json()
-        
-        # Le backend renvoie maintenant directement une liste ou un objet avec 'results'
         if isinstance(data, list):
             return data
         else:
@@ -110,6 +141,18 @@ def fetch_autocomplete(query, limit=5):
         response.raise_for_status()
         data = response.json()
         return data.get('suggestions', [])
+    except requests.RequestException:
+        return []
+
+@st.cache_data(ttl=3600)
+def fetch_genres():
+    """Fetches all available genres from the API."""
+    url = "https://getgenres-1031393311197.europe-west6.run.app/get_genres"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('genres', [])
     except requests.RequestException:
         return []
 
@@ -161,40 +204,38 @@ def main():
     if not st.session_state.app_started:
         show_landing_page()
         return
+    
+    # Si un film est sélectionné pour la fiche détaillée
+    if "view_movie_id" in st.session_state:
+        show_movie_detail_page(st.session_state.view_movie_id)
+        return
 
     st.markdown('<h1 style="color: #FFFFFF; font-weight: 900; margin-bottom: 0.5rem; font-size: 2.5rem;">🌌 Catalogue Galactique</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #94A3B8; font-size: 1.15rem; margin-bottom: 2.5rem; font-weight: 500;">Filtrage de précision et exploration profonde.</p>', unsafe_allow_html=True)
     
-    # Champ de recherche en temps réel principal
-    title_prefix = st.text_input(
-    "Recherche de titre...",
-    key="main_title_search",
-    placeholder="Nom du film..."
-)
+    col_search, col_sort = st.columns([3, 1], gap="medium")
+    with col_search:
+        title_prefix = st.text_input("Recherche de titre...", key="main_title_search", placeholder="Nom du film...", label_visibility="collapsed")
+    with col_sort:
+        tri = st.selectbox("Trier par", ["Titre A-Z", "Titre Z-A", "Année ↓", "Année ↑", "Note ↓", "Note ↑"], label_visibility="collapsed")
     
-    # --- INITIALISATION DE LA SESSION (PAGINATION) ---
     if 'page' not in st.session_state:
         st.session_state.page = 1
 
-    # --- BARRE LATÉRALE (FILTRES) ---
     st.sidebar.markdown('<h2 style="font-size: 1.4rem; color: #FFFFFF; margin-bottom: 1.5rem;">⚙️ Paramètres</h2>', unsafe_allow_html=True)
     
     language = st.sidebar.selectbox("Langue", ["Toutes", "en", "fr", "es", "ja", "ko"])
-    genre = st.sidebar.text_input("Genre", placeholder="Ex: Action...")
-    min_avg_rating = st.sidebar.slider("Note minimale", 0.0, 10.0, 0.0, 0.5)
-    released_after_year = st.sidebar.number_input("Après l'année", min_value=1900, max_value=2026, value=1900)
+    
+    genres_list = fetch_genres()
+    genre = st.sidebar.multiselect("Genre(s)", genres_list)
+    min_avg_rating = st.sidebar.slider("Note minimale", min_value=0.0, max_value=5.0, value=0.0, step=0.5)
+    released_after_year = st.sidebar.slider("Après l'année", min_value=1900, max_value=2026, value=1900, step=1)
     page_size = st.sidebar.selectbox("Résultats", [10, 20, 50, 100], index=0)
     
-    apply_filters = st.sidebar.button("🛸 Scanner la base", use_container_width=True)
-    
-    if apply_filters:
-        st.session_state.page = 1
-
-    # Construction dynamique du payload
     payload = {"page": st.session_state.page, "page_size": page_size}
     if title_prefix: payload["title_prefix"] = title_prefix
     if language != "Toutes": payload["language"] = language
-    if genre: payload["genre"] = genre
+    if genre: payload["genre"] = "|".join(genre)
     if min_avg_rating > 0: payload["min_avg_rating"] = min_avg_rating
     if released_after_year > 1900: payload["released_after"] = released_after_year
 
@@ -202,61 +243,49 @@ def main():
          movies = fetch_filtered_movies(payload)
     
     if movies:
-        # --- AFFICHAGE DU TABLEAU ---
-        event = st.dataframe(
-            movies, 
-            width="stretch", 
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row"
-        )
+        if tri == "Titre A-Z":
+            movies.sort(key=lambda m: m.get('title', '').lower())
+        elif tri == "Titre Z-A":
+            movies.sort(key=lambda m: m.get('title', '').lower(), reverse=True)
+        elif tri == "Année ↓":
+            movies.sort(key=lambda m: m.get('release_year', 0), reverse=True)
+        elif tri == "Année ↑":
+            movies.sort(key=lambda m: m.get('release_year', 9999))
+        elif tri == "Note ↓":
+            movies.sort(key=lambda m: m.get('avg_rating', 0), reverse=True)
+        elif tri == "Note ↑":
+            movies.sort(key=lambda m: m.get('avg_rating', 0))
         
-        selected_rows = event.selection.rows
-        
-        if selected_rows:
-            selected_movie_info = movies[selected_rows[0]]
-            movie_id = selected_movie_info.get('tmdbId')
+        for idx, movie in enumerate(movies):
+            title = movie.get('title', 'Sans titre')
+            year = movie.get('release_year', '')
+            genres = movie.get('genres', '')
+            rating = movie.get('avg_rating', 0)
+            tmdb_id = movie.get('tmdbId')
             
-            if movie_id:
-                with st.spinner("Chargement des détails..."):
-                    tmdb_details = fetch_tmdb_movie_details(movie_id)
-                
-                if tmdb_details:
-                    # Rendu de la fiche sous forme de carte stylisée
-                    st.markdown('<div class="movie-card">', unsafe_allow_html=True)
-                    col1, col2 = st.columns([1, 2], gap="large")
-                    with col1:
-                        if tmdb_details.get('poster_path'):
-                            poster_url = f"https://image.tmdb.org/t/p/w500{tmdb_details['poster_path']}"
-                            st.image(poster_url, use_column_width=True)
-                        else:
-                            st.info("Affiche non disponible")
-                    with col2:
-                        st.markdown(f'<div class="movie-title-header">{tmdb_details.get("title")}</div>', unsafe_allow_html=True)
-                        
-                        # Badges
-                        score = tmdb_details.get('vote_average', 'N/A')
-                        date = tmdb_details.get('release_date', 'N/A')
-                        runtime = tmdb_details.get('runtime', 'N/A')
-                        
-                        st.markdown(f"""
-                            <span class="badge rating-badge">⭐ {score}/10</span>
-                            <span class="badge date-badge">📅 {date}</span>
-                            <span class="badge runtime-badge">⏱️ {runtime} min</span>
-                        """, unsafe_allow_html=True)
-                        
-                        genres_list = [g['name'] for g in tmdb_details.get('genres', [])]
-                        if genres_list:
-                            genres_html = "".join([f'<span class="badge genre-badge">{g}</span>' for g in genres_list])
-                            st.markdown(f"<div>{genres_html}</div>", unsafe_allow_html=True)
-                        
-                        st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-                        st.markdown('<p style="color: #FFFFFF; font-weight: 700; margin-bottom: 10px;">SYNOPSIS</p>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="synopsis-text">{tmdb_details.get("overview", "Aucune description galactique disponible pour ce titre.")}</div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.error("Signal TMDB perdu (ID manquant).")
-                
+            genre_badges = ""
+            if genres:
+                for g in genres.split('|'):
+                    genre_badges += f'<span class="badge genre-badge" style="font-size: 0.7rem; padding: 2px 8px; margin-bottom: 0;">{g.strip()}</span>'
+            
+            col_info, col_btn = st.columns([6, 1], gap="small")
+            with col_info:
+                st.markdown(f"""
+                    <div class="grid-card" style="padding: 10px 18px; margin-bottom: -10px;">
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                            <div class="grid-card-title" style="margin-bottom: 0; font-size: 0.95rem;">{title}</div>
+                            <span style="color: #64748B; font-size: 0.8rem;">{year}</span>
+                            <span class="badge rating-badge" style="font-size: 0.75rem; padding: 2px 8px; margin-bottom: 0;">⭐ {round(rating, 1)}</span>
+                            {genre_badges}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_btn:
+                if tmdb_id:
+                    if st.button("📖", key=f"btn_{tmdb_id}_{idx}", use_container_width=True):
+                        st.session_state.view_movie_id = tmdb_id
+                        st.rerun()
+        
         # Pagination
         st.write("")
         col_prev, col_center, col_next = st.columns([1, 2, 1])
@@ -265,13 +294,86 @@ def main():
                 if st.button("⬅️ Retour"):
                     st.session_state.page -= 1
                     st.rerun()
+        with col_center:
+            st.markdown(f'<p style="text-align: center; color: #94A3B8; font-size: 1rem; margin-top: 8px;">Page {st.session_state.page}</p>', unsafe_allow_html=True)
         with col_next:
             if len(movies) == page_size:
                 if st.button("Suivant ➡️"):
                     st.session_state.page += 1
                     st.rerun()
     else:
-        st.warning("Aucun signal détecté dans ce secteur (Film non trouvé).")
+        st.warning("Aucun film trouvé.")
+
+
+def show_movie_detail_page(movie_id):
+    """Affiche une page dédiée aux détails d'un film."""
+    apply_custom_styles()
+    
+    if st.button("⬅️ Retour au catalogue"):
+        del st.session_state.view_movie_id
+        st.rerun()
+    
+    with st.spinner("Chargement de la fiche..."):
+        tmdb_details = fetch_tmdb_movie_details(movie_id)
+    
+    if not tmdb_details:
+        st.error("Impossible de charger les détails du film.")
+        return
+    
+    st.markdown('<div class="movie-card">', unsafe_allow_html=True)
+    
+    col_poster, col_info = st.columns([1, 2], gap="large")
+    
+    with col_poster:
+        if tmdb_details.get('poster_path'):
+            poster_url = f"https://image.tmdb.org/t/p/w500{tmdb_details['poster_path']}"
+            st.image(poster_url, width=350)
+        else:
+            st.info("Affiche non disponible")
+    
+    with col_info:
+        st.markdown(f'<div class="movie-title-header">{tmdb_details.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
+        
+        if tmdb_details.get('tagline'):
+            st.markdown(f'<p style="color: #94A3B8; font-style: italic; font-size: 1.1rem; margin-bottom: 20px;">"{tmdb_details["tagline"]}"</p>', unsafe_allow_html=True)
+        
+        score = tmdb_details.get('vote_average', 'N/A')
+        votes = tmdb_details.get('vote_count', 0)
+        date = tmdb_details.get('release_date', 'N/A')
+        runtime = tmdb_details.get('runtime', 'N/A')
+        
+        st.markdown(f"""
+            <span class="badge rating-badge">⭐ {score}/10 ({votes} votes)</span>
+            <span class="badge date-badge">📅 {date}</span>
+            <span class="badge runtime-badge">⏱️ {runtime} min</span>
+        """, unsafe_allow_html=True)
+        
+        genres_list = [g['name'] for g in tmdb_details.get('genres', [])]
+        if genres_list:
+            genres_html = "".join([f'<span class="badge genre-badge">{g}</span>' for g in genres_list])
+            st.markdown(f"<div style='margin-top: 10px;'>{genres_html}</div>", unsafe_allow_html=True)
+        
+        st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+        st.markdown('<p style="color: #FFFFFF; font-weight: 700; margin-bottom: 10px; font-size: 1.1rem;">SYNOPSIS</p>', unsafe_allow_html=True)
+        st.markdown(f'<div class="synopsis-text">{tmdb_details.get("overview", "Aucune description disponible.")}</div>', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Infos complémentaires
+    st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+    
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.markdown('<p style="color: #94A3B8; font-size: 0.9rem;">BUDGET</p>', unsafe_allow_html=True)
+        budget = tmdb_details.get('budget', 0)
+        st.markdown(f'<p style="color: #FFFFFF; font-size: 1.3rem; font-weight: 700;">${budget:,.0f}</p>' if budget else '<p style="color: #475569;">Non communiqué</p>', unsafe_allow_html=True)
+    with col_b:
+        st.markdown('<p style="color: #94A3B8; font-size: 0.9rem;">REVENUS</p>', unsafe_allow_html=True)
+        revenue = tmdb_details.get('revenue', 0)
+        st.markdown(f'<p style="color: #FFFFFF; font-size: 1.3rem; font-weight: 700;">${revenue:,.0f}</p>' if revenue else '<p style="color: #475569;">Non communiqué</p>', unsafe_allow_html=True)
+    with col_c:
+        st.markdown('<p style="color: #94A3B8; font-size: 0.9rem;">LANGUE ORIGINALE</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="color: #FFFFFF; font-size: 1.3rem; font-weight: 700;">{tmdb_details.get("original_language", "N/A").upper()}</p>', unsafe_allow_html=True)
 
 
 if __name__ == '__main__':
