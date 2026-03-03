@@ -4,7 +4,11 @@ import os
 from dotenv import load_dotenv
 from st_keyup import st_keyup
 
-load_dotenv(dotenv_path='../.env')
+# Charger les variables d'environnement (check local puis parent pour compatibilité Docker/Local)
+if os.path.exists('.env'):
+    load_dotenv('.env')
+else:
+    load_dotenv(dotenv_path='../.env')
 
 st.set_page_config(page_title="Cinéma Explorer", page_icon="🎬", layout="wide")
 
