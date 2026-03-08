@@ -59,6 +59,8 @@ streamlit_app/
 
 ## Google Cloud Functions
 
+> 📁 The source code for all Cloud Functions is available in the `cloud_functions/` directory at the root of this repository, organized by function name (`get_movies/`, `get_genres/`, `autocomplete/`).
+
 ### `getmovies` — POST `/get_movies`
 
 Returns a paginated, filtered list of movies from BigQuery.
@@ -119,6 +121,52 @@ WHERE LOWER(title) LIKE LOWER(CONCAT(@prefix, '%'))
 ORDER BY title
 LIMIT @limit
 ```
+
+---
+
+## SQL Query Logging (Assignment Requirement)
+
+To satisfy the assignment requirement — *"display the executed SQL queries and their outputs in the terminal"* — each Cloud Function includes a `debug` object in its JSON response:
+
+```json
+{
+  "results": [...],
+  "debug": {
+    "executed_sql": "SELECT ... FROM ... WHERE ...",
+    "parameters": {"language": "en", "limit": 20},
+    "row_count": 20,
+    "result_preview": [{"title": "Inception", "avg_rating": 4.3}]
+  }
+}
+```
+
+The Streamlit app (`api/services.py`) reads this `debug` object and **prints it in the terminal (stdout)** for every API call. This produces output like:
+
+```
+============================================================
+Executing SQL query:
+SELECT m.movieId, m.title, ...
+FROM `project.Assignment_1.Movies` m
+LEFT JOIN `project.Assignment_1.Ratings` r ON r.movieId = m.movieId
+WHERE m.language = @language
+GROUP BY ...
+ORDER BY avg_rating DESC
+LIMIT @limit OFFSET @offset
+
+Query parameters:
+{"language": "en", "limit": 20, "offset": 0}
+
+Rows returned: 20
+
+Result preview:
+[
+  {"title": "Inception", "avg_rating": 4.3},
+  {"title": "The Dark Knight", "avg_rating": 4.7}
+]
+============================================================
+```
+
+This logging is visible when running locally (`streamlit run main.py`), inside Docker, or on Cloud Run.
 
 ---
 

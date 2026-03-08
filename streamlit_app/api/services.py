@@ -1,7 +1,27 @@
 import os
+import json
 import requests
 import streamlit as st
 from models.movie import Movie, MovieDetail
+
+def print_debug(data):
+    """Affiche les informations de debug SQL dans le terminal (stdout)."""
+    debug = data.get('debug')
+    if not debug:
+        return
+    
+    print("\n" + "="*60)
+    print("Executing SQL query:")
+    print(debug.get('executed_sql', '').strip())
+    
+    print("\nQuery parameters:")
+    print(json.dumps(debug.get('parameters', {}), default=str))
+    
+    print(f"\nRows returned: {debug.get('row_count', 0)}")
+    
+    print("\nResult preview:")
+    print(json.dumps(debug.get('result_preview', []), default=str, indent=2))
+    print("="*60 + "\n")
 
 def fetch_filtered_movies(filters) -> list[Movie]:
     cloud_function_url = 'https://getmovies-1031393311197.europe-west6.run.app/get_movies'
@@ -11,7 +31,10 @@ def fetch_filtered_movies(filters) -> list[Movie]:
         response.raise_for_status()
         data = response.json()
         
-        raw_list = data if isinstance(data, list) else data.get('results', [])
+        # Afficher le debug SQL dans le terminal
+        print_debug(data)
+        
+        raw_list = data.get('results', data if isinstance(data, list) else [])
         return [Movie.from_dict(m) for m in raw_list]
     except requests.RequestException as e:
         st.error(f"Erreur lors de la requête API: {e}")
@@ -26,6 +49,10 @@ def fetch_autocomplete(query, limit=5) -> list[str]:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
+        
+        # Afficher le debug SQL dans le terminal
+        print_debug(data)
+        
         return data.get('suggestions', [])
     except requests.RequestException:
         return []
@@ -37,6 +64,10 @@ def fetch_genres() -> list[str]:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
+        
+        # Afficher le debug SQL dans le terminal
+        print_debug(data)
+        
         return data.get('genres', [])
     except requests.RequestException:
         return []
