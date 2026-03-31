@@ -2,9 +2,9 @@ import streamlit as st
 import os
 import base64
 from api.services import fetch_genres, fetch_filtered_movies
+from api.elasticsearch_service import fetch_all_titles
 
 def show_catalog_page():
-    # Bannière cinéma
     banner_path = os.path.join(os.path.dirname(__file__), '..', 'cinema_banner.png')
     if os.path.exists(banner_path):
         with open(banner_path, "rb") as f:
@@ -42,11 +42,33 @@ def show_catalog_page():
     else:
         st.markdown('<h1 style="color: #1A4B8C; font-weight: 900; margin-bottom: 2.5rem; font-size: 2.5rem;">Catalogue</h1>', unsafe_allow_html=True)
 
+    all_titles = fetch_all_titles()
 
-    
-    col_search, col_sort = st.columns([3, 1], gap="medium")
+    # Initialiser l'index du selectbox
+    if "title_index" not in st.session_state:
+        st.session_state.title_index = 0
+
+    col_search, col_clear, col_sort = st.columns([3, 0.4, 1], gap="small")
+    with col_clear:
+        st.markdown("####")
+        if st.button("❌", key="clear_search", help="Effacer la recherche"):
+            st.session_state.title_index = 0
+            st.rerun()
     with col_search:
-        title_prefix = st.text_input("Recherche de titre...", key="main_title_search", placeholder="Nom du film...", label_visibility="collapsed")
+        st.markdown("#### 🔍 Recherche par titre")
+        search_title = st.selectbox(
+            "Recherche par titre",
+            options=[""] + all_titles,
+            index=st.session_state.title_index,
+            placeholder="Commencez à taper un titre de film...",
+            label_visibility="collapsed",
+            key="filter_title",
+        )
+        # Mettre à jour l'index si l'utilisateur a sélectionné un titre
+        if search_title:
+            st.session_state.title_index = ([""] + all_titles).index(search_title)
+
+    title_prefix = search_title or ""
     with col_sort:
         tri = st.selectbox("Trier par", ["Titre A-Z", "Titre Z-A", "Année ↓", "Année ↑", "Note ↓", "Note ↑"], label_visibility="collapsed")
     
@@ -55,7 +77,8 @@ def show_catalog_page():
 
     st.sidebar.markdown('<h2 style="font-size: 1.4rem; color: #FFFFFF; margin-bottom: 1.5rem;">⚙️ Paramètres</h2>', unsafe_allow_html=True)
     
-    language = st.sidebar.selectbox("Langue", ["Toutes", "en", "fr", "es", "ja", "ko"])
+    lang_options = {"Toutes": None, "Anglais": "en", "Français": "fr", "Espagnol": "es", "Japonais": "ja", "Coréen": "ko"}
+    language_label = st.sidebar.selectbox("Langue", list(lang_options.keys()))
     
     genres_list = fetch_genres()
     genre = st.sidebar.multiselect("Genre(s)", genres_list)
@@ -66,7 +89,7 @@ def show_catalog_page():
     
     payload = {"page": st.session_state.page, "page_size": page_size}
     if title_prefix: payload["title_prefix"] = title_prefix
-    if language != "Toutes": payload["language"] = language
+    if lang_options[language_label]: payload["language"] = lang_options[language_label]
     if genre: payload["genre"] = "|".join(genre)
     if min_avg_rating > 0: payload["min_avg_rating"] = min_avg_rating
     if released_after_year > 1900: payload["released_after"] = released_after_year

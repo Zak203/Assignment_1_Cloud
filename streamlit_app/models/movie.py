@@ -1,5 +1,45 @@
 from dataclasses import dataclass, field
 from typing import Optional
+import re
+
+LANGUAGE_MAP = {
+    "en": "Anglais",
+    "fr": "Français",
+    "es": "Espagnol",
+    "ja": "Japonais",
+    "ko": "Coréen",
+    "de": "Allemand",
+    "it": "Italien",
+    "pt": "Portugais",
+    "zh": "Chinois",
+    "ru": "Russe",
+    "hi": "Hindi",
+    "ar": "Arabe",
+    "sv": "Suédois",
+    "da": "Danois",
+    "no": "Norvégien",
+    "fi": "Finnois",
+    "nl": "Néerlandais",
+    "pl": "Polonais",
+    "tr": "Turc",
+    "th": "Thaï",
+    "cs": "Tchèque",
+    "hu": "Hongrois",
+    "ro": "Roumain",
+    "el": "Grec",
+    "he": "Hébreu",
+    "id": "Indonésien",
+    "ms": "Malais",
+    "vi": "Vietnamien",
+    "uk": "Ukrainien",
+    "fa": "Persan",
+    "bn": "Bengali",
+    "ta": "Tamoul",
+    "te": "Télougou",
+    "cn": "Cantonais",
+    "la": "Latin",
+    "xx": "Sans dialogues",
+}
 
 
 @dataclass
@@ -13,16 +53,31 @@ class Movie:
 
     @property
     def display_language(self) -> str:
-        return self.language.upper()
+        return LANGUAGE_MAP.get(self.language.lower(), self.language.upper())
 
     @property
     def genres_list(self) -> list:
         return [g.strip() for g in self.genres.split('|')] if self.genres else []
 
     @staticmethod
+    def normalize_title(title: str) -> str:
+        """Corrige les titres avec article rejeté à la fin: 'Animatrix, The (2003)' -> 'The Animatrix (2003)'"""
+        match = re.match(
+            r'^(.+),\s*(The|A|An|Le|La|Les|L\'|Un|Une|Des|Der|Die|Das|El|Los|Las)\b((?:\s*\([^)]*\))*)$',
+            title, re.IGNORECASE
+        )
+        if match:
+            base = match.group(1).strip()
+            article = match.group(2)
+            suffix = match.group(3)  # ex: " (2003)" ou " (Cma) (1980)"
+            return f"{article} {base}{suffix}"
+        return title
+
+    @staticmethod
     def from_dict(data: dict) -> 'Movie':
+        raw_title = data.get('title', 'Sans titre')
         return Movie(
-            title=data.get('title', 'Sans titre'),
+            title=Movie.normalize_title(raw_title),
             release_year=data.get('release_year'),
             avg_rating=data.get('avg_rating', 0.0),
             genres=data.get('genres', ''),
@@ -56,7 +111,7 @@ class MovieDetail:
 
     @property
     def display_language(self) -> str:
-        return self.original_language.upper()
+        return LANGUAGE_MAP.get(self.original_language.lower(), self.original_language.upper())
 
     @staticmethod
     def from_dict(data: dict) -> 'MovieDetail':

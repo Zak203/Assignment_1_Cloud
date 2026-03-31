@@ -11,8 +11,8 @@ st.set_page_config(page_title="Assignment 1 Movies", page_icon="🎬", layout="w
 
 from ui.styles import apply_custom_styles
 from views.landing import show_landing_page
-from views.catalog import show_catalog_page
 from views.movie_detail import show_movie_detail_page
+from views.netflix_home import show_netflix_home
 
 def main():
     apply_custom_styles()
@@ -28,7 +28,8 @@ def main():
         show_movie_detail_page(st.session_state.view_movie_id)
         return
 
-    show_catalog_page()
+    # Directement afficher la page d'accueil façon Netflix
+    show_netflix_home()
 
 if __name__ == '__main__':
     main()

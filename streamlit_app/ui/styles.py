@@ -4,152 +4,160 @@ def apply_custom_styles():
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Netflix+Sans:wght@300;400;500;700&family=Inter:wght@400;600;700;900&display=swap');
+
+        /* Netflix Color Palette */
+        :root {
+            --netflix-red: #E50914;
+            --netflix-black: #141414;
+            --netflix-dark: #1F1F1F;
+            --netflix-gray: #808080;
+            --netflix-light: #E5E5E5;
+        }
 
         * { font-family: 'Inter', sans-serif; }
 
+        /* Dark Mode Global Background */
         .stApp {
-            background: linear-gradient(160deg, #EBF3FF 0%, #F7FAFF 60%, #FFFFFF 100%);
+            background-color: var(--netflix-black) !important;
+            color: var(--netflix-light) !important;
         }
+
+        /* Hide Top Right Menu and Footer */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {background-color: transparent !important;}
 
         .main .block-container {
-            padding-top: 2.5rem;
+            padding-top: 1rem;
             padding-bottom: 3rem;
-            max-width: 1200px;
+            max-width: 1400px;
         }
 
+        /* Sidebar Styling Netflix Style */
         [data-testid="stSidebar"] {
-            background: linear-gradient(180deg, #1A4B8C 0%, #1E3A6E 100%) !important;
-            border-right: none;
+            background-color: var(--netflix-black) !important;
+            border-right: 1px solid #333 !important;
         }
-
-        /* Tous les textes dans la sidebar */
-        [data-testid="stSidebar"] label,
-        [data-testid="stSidebar"] p,
-        [data-testid="stSidebar"] span,
-        [data-testid="stSidebar"] div {
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p, 
+        [data-testid="stSidebar"] label {
             color: #FFFFFF !important;
+            font-weight: 600 !important;
+        }
+        
+        /* Inputs styling securely applied */
+        input, .stSelectbox div[data-baseweb="select"] > div, .stMultiSelect div[data-baseweb="select"] > div {
+            background-color: #2b2b2b !important;
+            color: white !important;
+            border: 1px solid #444 !important;
+            border-radius: 4px !important;
+        }
+        
+        [data-baseweb="popover"], [data-baseweb="menu"], ul[role="listbox"] {
+            background-color: #2b2b2b !important;
+            border: 1px solid #444 !important;
+            color: white !important;
+        }
+        [data-baseweb="menu-item"], [data-baseweb="option"] {
+            background-color: transparent !important;
+            color: white !important;
+        }
+        [data-baseweb="menu-item"]:hover, [data-baseweb="option"]:hover {
+            background-color: var(--netflix-red) !important;
         }
 
-        /* Champs de sélection (selectbox, multiselect) */
-        [data-testid="stSidebar"] [data-baseweb="select"] > div,
-        [data-testid="stSidebar"] [data-baseweb="select"] input {
-            background-color: rgba(255,255,255,0.15) !important;
-            border-color: rgba(255,255,255,0.35) !important;
+        /* ----- Buttons (Netflix Red) ----- */
+        .stButton > button {
+            background-color: var(--netflix-red) !important;
             color: #FFFFFF !important;
-            border-radius: 8px !important;
+            border: none !important;
+            border-radius: 4px !important;
+            font-weight: 700 !important;
+            padding: 0.5rem 1rem !important;
+            transition: all 0.2s ease !important;
+        }
+        .stButton > button:hover {
+            background-color: #f40612 !important;
+            transform: scale(1.02) !important;
         }
 
-        /* Dropdown ouvert — s'affiche sur le fond blanc, doit avoir son propre fond */
-        [data-baseweb="popover"],
-        [data-baseweb="popover"] [data-baseweb="menu"],
-        [data-baseweb="menu-item"],
-        ul[role="listbox"] {
-            background-color: #1E3A6E !important;
-            border: 1px solid rgba(255,255,255,0.15) !important;
-            border-radius: 10px !important;
+        button[kind="secondary"] {
+            background-color: rgba(109, 109, 110, 0.7) !important;
+            color: white !important;
         }
-        [data-baseweb="popover"] li,
-        [data-baseweb="menu-item"],
-        ul[role="listbox"] li,
-        [data-baseweb="option"] {
-            background-color: #1E3A6E !important;
-            color: #FFFFFF !important;
-        }
-        [data-baseweb="popover"] li:hover,
-        [data-baseweb="option"]:hover,
-        [data-baseweb="menu-item"]:hover {
-            background-color: rgba(255,255,255,0.12) !important;
-            color: #FFFFFF !important;
+        button[kind="secondary"]:hover {
+            background-color: rgba(109, 109, 110, 0.9) !important;
         }
 
-        /* Tags multiselect sélectionnés */
-        [data-testid="stSidebar"] [data-baseweb="tag"] {
-            background-color: rgba(255,255,255,0.25) !important;
-            color: #FFFFFF !important;
+        /* ----- Classic Catalog Row (Badges) ----- */
+        .grid-card-dark {
+            background: #222222;
+            border-radius: 8px;
+            border: 1px solid #333;
+            padding: 12px 18px;
+            margin-bottom: 6px;
+            transition: border-color 0.2s;
         }
-
-        /* Slider — track et thumb */
-        [data-testid="stSidebar"] [data-testid="stSlider"] [role="slider"] {
-            background-color: #FFFFFF !important;
+        .grid-card-dark:hover {
+            border-color: var(--netflix-red);
         }
-        [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] div[aria-valuemin] {
-            background: rgba(255,255,255,0.3) !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stSlider"] span {
-            color: #FFFFFF !important;
-        }
-
-        .movie-card {
-            background: #FFFFFF;
-            border-radius: 20px;
-            border: 1px solid rgba(26, 75, 140, 0.12);
-            padding: 30px;
-            box-shadow: 0 8px 32px rgba(26, 75, 140, 0.10);
-            margin-top: 25px;
-        }
-
-        .movie-title-header {
-            font-size: 2.5rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, #1A4B8C, #2E7ED6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 15px;
-        }
-
-        .badge {
-            display: inline-block; padding: 5px 12px; border-radius: 8px;
-            font-size: 0.8rem; font-weight: 700; margin-right: 8px; margin-bottom: 8px;
-            text-transform: uppercase; letter-spacing: 0.5px;
-        }
-        .rating-badge { background-color: rgba(245, 158, 11, 0.12); color: #B45309; border: 1px solid rgba(245, 158, 11, 0.3); }
-        .date-badge { background-color: rgba(26, 75, 140, 0.08); color: #1A4B8C; border: 1px solid rgba(26, 75, 140, 0.2); }
-        .runtime-badge { background-color: rgba(26, 75, 140, 0.08); color: #1A4B8C; border: 1px solid rgba(26, 75, 140, 0.2); }
-        .genre-badge { background-color: rgba(46, 126, 214, 0.1); color: #1A4B8C; border: 1px solid rgba(46, 126, 214, 0.25); }
-
-        .synopsis-text { color: #475569; line-height: 1.8; font-size: 1.05rem; }
-        .custom-divider {
-            height: 1px;
-            background: linear-gradient(to right, rgba(26,75,140,0.2), transparent);
-            margin: 25px 0;
-        }
-
-        .grid-card {
-            background: #FFFFFF;
-            border-radius: 14px;
-            border: 1px solid rgba(26, 75, 140, 0.10);
-            padding: 16px 20px;
-            transition: all 0.25s ease;
-            box-shadow: 0 2px 8px rgba(26, 75, 140, 0.06);
-        }
-
-        .grid-card:hover {
-            border-color: rgba(26, 75, 140, 0.35);
-            box-shadow: 0 6px 20px rgba(26, 75, 140, 0.14);
-            transform: translateY(-2px);
-        }
-
         .grid-card-title {
             font-size: 1rem;
             font-weight: 700;
-            color: #1E293B;
-            margin-bottom: 6px;
-            line-height: 1.3;
+            color: #FFF;
+            margin-bottom: 0;
+        }
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 6px;
+            font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        }
+        .rating-badge { background-color: rgba(245, 158, 11, 0.2); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.4); }
+        .lang-badge { background-color: rgba(255, 255, 255, 0.1); color: #CCC; border: 1px solid #555; }
+        .genre-badge { background-color: rgba(229, 9, 20, 0.15); color: #ff545d; border: 1px solid rgba(229, 9, 20, 0.4); }
+
+        /* ----- Movie Cards (Grid) ----- */
+        .movie-card-container {
+            position: relative;
+            border-radius: 6px;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            background-color: var(--netflix-dark);
+            cursor: pointer;
+            margin-bottom: 1rem;
+        }
+        .movie-card-container:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        .movie-info { padding: 10px; }
+        .movie-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .movie-meta {
+            font-size: 0.75rem;
+            color: var(--netflix-gray);
+            margin-bottom: 8px;
         }
 
-        /* Streamlit button overrides */
-        .stButton > button {
-            background: linear-gradient(135deg, #1A4B8C, #2E7ED6) !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            border-radius: 10px !important;
-            font-weight: 600 !important;
-            transition: all 0.25s ease !important;
+        /* ----- Custom Headers ----- */
+        h1, h2, h3, h4, h5 {
+            color: white !important;
+            font-weight: 700 !important;
         }
-        .stButton > button:hover {
-            transform: translateY(-1px) !important;
-            box-shadow: 0 6px 20px rgba(26, 75, 140, 0.35) !important;
+
+        .row-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            color: #E5E5E5;
         }
         </style>
         """,

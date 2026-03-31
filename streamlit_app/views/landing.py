@@ -1,161 +1,174 @@
 import streamlit as st
-import os
-from ui.styles import apply_custom_styles
+import time
 
 def show_landing_page():
-    apply_custom_styles()
-
-    # Logo HEC
-    logo_path = os.path.join(os.path.dirname(__file__), '..', 'heclogo.png')
-    logo_exists = os.path.exists(logo_path)
-
-    st.markdown(
-        """
+    st.markdown("""
         <style>
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
+        /* Hide all default streamlit components including header and footer */
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        .block-container {
+            padding-top: 0rem;
+            padding-bottom: 0rem;
+            padding-left: 0rem;
+            padding-right: 0rem;
+            max-width: 100% !important;
+            height: 100vh;
         }
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(24px); }
-            to { opacity: 1; transform: translateY(0); }
+        
+        body, .stApp {
+            background-color: #000 !important;
+            overflow: hidden !important;
         }
-        .landing-wrapper {
+
+        @keyframes infiniteScroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        @keyframes fadeInOutText {
+            0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+            20% { opacity: 1; transform: scale(1) translateY(0); }
+            80% { opacity: 1; transform: scale(1) translateY(0); }
+            100% { opacity: 0; transform: scale(1.05) translateY(-20px); }
+        }
+
+        @keyframes fadeOutScreen {
+            0% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        .splash-container {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+            z-index: 9999;
+            animation: fadeOutScreen 4.5s ease-in-out forwards;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .marquee-wrapper {
+            position: absolute;
+            top: -10vh; left: 0; width: 200vw;
+            display: flex;
+            flex-direction: column;
+            gap: 2vh;
+            opacity: 0.25; /* Very subtle posters in the background */
+            transform: rotate(-5deg) scale(1.2);
+            pointer-events: none;
+        }
+
+        .marquee-row {
+            display: flex;
+            width: fit-content;
+            animation: infiniteScroll 30s linear infinite;
+        }
+
+        .marquee-row.reverse {
+            animation-direction: reverse;
+            animation-duration: 40s;
+        }
+
+        .marquee-img {
+            height: 35vh;
+            border-radius: 12px;
+            margin-right: 2vh;
+            object-fit: cover;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+        }
+        
+        .dark-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, transparent 0%, #000 80%);
+            z-index: 2;
+        }
+
+        .splash-text-box {
+            position: relative;
+            z-index: 10;
+            text-align: center;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            text-align: center;
-            padding: 3rem 1rem 2rem;
-            animation: fadeInUp 0.7s ease forwards;
+            animation: fadeInOutText 4.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        .hec-logo-img {
-            animation: float 6s ease-in-out infinite;
-            margin-bottom: 20px;
-            max-width: 160px;
-        }
-        .landing-badge {
-            display: inline-block;
-            background: rgba(26, 75, 140, 0.10);
-            border: 1px solid rgba(26, 75, 140, 0.30);
-            color: #1A4B8C;
-            font-size: 0.78rem;
-            font-weight: 700;
-            letter-spacing: 2px;
+
+        .h1-title {
+            font-size: 5rem !important;
+            font-weight: 900 !important;
+            color: #E50914 !important;
+            letter-spacing: 0px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1 !important;
+            text-shadow: 0 4px 30px rgba(229, 9, 20, 0.5);
             text-transform: uppercase;
-            padding: 6px 18px;
-            border-radius: 50px;
-            margin-bottom: 20px;
         }
-        .landing-title {
-            font-size: 3.6rem;
-            font-weight: 900;
-            background: linear-gradient(135deg, #1A4B8C 0%, #2E7ED6 60%, #56A0E0 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin: 0 0 16px 0;
-            line-height: 1.1;
-        }
-        .landing-subtitle {
-            font-size: 1.05rem;
-            color: #64748B;
-            margin-bottom: 12px;
-            font-weight: 400;
-            line-height: 1.6;
-        }
-        .landing-author {
-            color: #94A3B8;
-            font-size: 0.8rem;
-            font-weight: 600;
-            letter-spacing: 1.5px;
+
+        .h2-subtitle {
+            font-size: 1.8rem !important;
+            color: #FFF !important;
+            font-weight: 300 !important;
+            letter-spacing: 12px !important;
+            margin-top: 1rem !important;
+            margin-bottom: 2rem !important;
             text-transform: uppercase;
-            margin-bottom: 0;
         }
-        .stat-card {
-            background: #FFFFFF;
-            border: 1px solid rgba(26, 75, 140, 0.12);
-            border-radius: 16px;
-            padding: 22px 20px;
-            text-align: center;
-            box-shadow: 0 4px 16px rgba(26, 75, 140, 0.08);
-            transition: all 0.3s ease;
-        }
-        .stat-card:hover {
-            border-color: rgba(26, 75, 140, 0.3);
-            transform: translateY(-3px);
-            box-shadow: 0 8px 24px rgba(26, 75, 140, 0.14);
-        }
-        .stat-value {
-            font-size: 1.9rem;
-            font-weight: 900;
-            color: #1A4B8C;
-            line-height: 1;
-        }
-        .stat-label {
-            font-size: 0.78rem;
-            color: #64748B;
-            font-weight: 600;
+
+        .h3-author {
+            font-size: 1rem !important;
+            color: #888 !important;
+            font-weight: 400 !important;
+            letter-spacing: 4px !important;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 8px;
         }
         </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # Bloc héro : tout en HTML pur pour garantir le centrage sans scroll
-
-    logo_html = ""
-    if logo_exists:
-        import base64
-        with open(logo_path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        logo_html = f'<img src="data:image/png;base64,{b64}" class="hec-logo-img" />'
-
-    st.markdown(f"""
-        <div class="landing-wrapper">
-            {logo_html}
-            <div class="landing-badge">☁️ Cloud and Advanced Analytics</div>
-            <h1 class="landing-title">Assignment numero 1</h1>
-            <p class="landing-subtitle">
-                Explorez des milliers de films, filtrez par genre,<br>
-                langue, année et note — le tout en temps réel.
-            </p>
-            <p class="landing-author">Zakaria Charouite</p>
-        </div>
     """, unsafe_allow_html=True)
 
-    # Stat cards
-    col_stat1, col_stat2, col_stat3 = st.columns(3)
-    with col_stat1:
-        st.markdown("""
-            <div class="stat-card">
-                <div class="stat-value">10K+</div>
-                <div class="stat-label">Films disponibles</div>
-            </div>
-        """, unsafe_allow_html=True)
-    with col_stat2:
-        st.markdown("""
-            <div class="stat-card">
-                <div class="stat-value">20+</div>
-                <div class="stat-label">Genres différents</div>
-            </div>
-        """, unsafe_allow_html=True)
-    with col_stat3:
-        st.markdown("""
-            <div class="stat-card">
-                <div class="stat-value">☁️</div>
-                <div class="stat-label">Powered by GCP</div>
-            </div>
-        """, unsafe_allow_html=True)
+    # 12 high quality dummy Netflix posters for the marquee effect
+    posters = [
+        "https://image.tmdb.org/t/p/w500/9gk7adOG2ooPpcO1mAmJFAtefeO.jpg", # Inception
+        "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg", # Interstellar
+        "https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg", # Dark Knight
+        "https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg", # Fight Club
+        "https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg", # Matrix
+        "https://image.tmdb.org/t/p/w500/d5iIlFn5s0ImszYzBPbOYKQmG_1.jpg", # Pulp Fiction
+        "https://image.tmdb.org/t/p/w500/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg", # Shawshank
+        "https://image.tmdb.org/t/p/w500/3bhkrj58Vtu7enYsRolD1fZdja1.jpg", # Godfather
+        "https://image.tmdb.org/t/p/w500/saHP97rTPS5eLmrLQEcANmKrsFl.jpg", # Forrest Gump
+        "https://image.tmdb.org/t/p/w500/vQWk5YBFWFCPbV6sXl5EebieoT.jpg",  # Lord of the rings
+        "https://image.tmdb.org/t/p/w500/oxcMhA1WlW3M2t8e6b12Y153Eok.jpg", # Avengers
+        "https://image.tmdb.org/t/p/w500/8tZYtuWezp8JbcsvHYO0O46tFbo.jpg", # Joker
+    ]
+    
+    # We duplicate the array 3 times to make sure it fills the screen perfectly for the loop
+    images_html_fwd = "".join([f'<img class="marquee-img" src="{p}">' for p in posters * 3])
+    images_html_rev = "".join([f'<img class="marquee-img" src="{p}">' for p in reversed(posters * 3)])
 
-    st.write("")
-    st.write("")
+    st.markdown(f"""
+<div class="splash-container">
+    <div class="marquee-wrapper">
+        <div class="marquee-row">{images_html_fwd}</div>
+        <div class="marquee-row reverse">{images_html_rev}</div>
+        <div class="marquee-row">{images_html_fwd}</div>
+    </div>
+    <div class="dark-overlay"></div>
+    <div class="splash-text-box">
+        <div class="h1-title">Assignment 2</div>
+        <div class="h2-subtitle">Cloud recommender</div>
+        <div class="h3-author">Zakaria Charouite</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        if st.button("🚀  Entrer dans la bibliothèque", use_container_width=True):
-            st.session_state.app_started = True
-            st.rerun()
+    # 4.2 seconds delay gives enough time for the fade in, read, and fade out animations
+    time.sleep(4.2)
+    st.session_state.app_started = True
+    st.rerun()
