@@ -134,6 +134,18 @@ def get_recommendations_for_users(
     return results
 
 
+def get_total_movie_count() -> int:
+    """Retourne le nombre total de films distincts dans la table Movies_train."""
+    client = _get_client()
+    query = f"SELECT COUNT(DISTINCT movieId) AS total FROM `{MOVIES}`"
+    try:
+        rows = list(client.query(query).result())
+        return rows[0].total if rows else 0
+    except Exception as e:
+        print(f"[BQ] get_total_movie_count ERREUR: {e}")
+        return 0
+
+
 def get_popular_movies(top_n: int = 10) -> list[dict]:
     """
     Retourne les films les plus populaires basés sur la moyenne des ratings implicites.

@@ -73,7 +73,7 @@ def fetch_genres() -> list[str]:
         return []
 
 def fetch_tmdb_movie_details(movie_id) -> MovieDetail | None:
-    api_key = os.getenv('TMB_apikey')
+    api_key = os.getenv('TMB_apikey', 'b26718e982f5c714c9bc4d5ba1f49dbd')
     
     if not api_key:
         st.error("La clé API pour TMDB est manquante. Vérifiez votre fichier .env.")

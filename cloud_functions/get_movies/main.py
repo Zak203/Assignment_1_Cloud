@@ -33,7 +33,7 @@ def get_movies(request):
         params_dict["language"] = language
 
     if released_after:
-        where.append("m.release_year > @released_after")
+        where.append("COALESCE(SAFE_CAST(REGEXP_EXTRACT(m.title, r'\\((\\d{4})\\)') AS INT64), m.release_year) >= @released_after")
         params.append(bigquery.ScalarQueryParameter("released_after", "INT64", int(released_after)))
         params_dict["released_after"] = int(released_after)
 

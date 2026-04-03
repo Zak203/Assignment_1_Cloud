@@ -17,6 +17,14 @@ def get_es_client() -> Elasticsearch:
     )
 
 
+import re
+
+def normalize_title(db_title: str) -> str:
+    m = re.match(r"^(.+?),\s+(The|A|An|Le|La|Les|L|El|Los|Las|Un|Die|Das|Der|Ein)(\s+\(.+\))?$", db_title)
+    if m:
+        return f"{m.group(2)} {m.group(1)}{m.group(3) or ''}"
+    return db_title
+
 def autocomplete_titles(query: str, limit: int = 8) -> list[dict]:
     """
     Retourne des suggestions de titres via Elasticsearch bool_prefix.
@@ -52,3 +60,31 @@ def autocomplete_titles(query: str, limit: int = 8) -> list[dict]:
     except Exception as e:
         print(f"[ES] Erreur autocomplete: {e}")
         return []
+
+def fetch_all_movies_dict() -> dict:
+    es = get_es_client()
+    try:
+        response = es.search(
+            index="movies_v2",
+            body={
+                "size": 10000,
+                "_source": ["title", "movieId", "tmdbId", "language"],
+                "query": {"match_all": {}},
+            },
+        )
+        hits = response["hits"]["hits"]
+        movies_dict = {}
+        for hit in hits:
+            src = hit["_source"]
+            if "title" in src:
+                display = normalize_title(src["title"])
+                movies_dict[display] = {
+                    "movieId": src.get("movieId"),
+                    "tmdbId": src.get("tmdbId"),
+                    "language": src.get("language"),
+                    "db_title": src["title"],
+                }
+        return movies_dict
+    except Exception as e:
+        print(f"[ES] fetch_all_movies_dict ERREUR: {e}")
+        return {}

@@ -29,8 +29,8 @@ def show_recommender_page():
     if st.button("Voir mes recommandations", type="primary"):
         with st.spinner("Génération des recommandations en cours..."):
             
-            # Map selected titles to movieIds
-            movie_ids = [movies_dict[title] for title in selected_titles if title in movies_dict]
+            # Map selected titles to movieIds (movies_dict values are now dicts)
+            movie_ids = [movies_dict[title]["movieId"] for title in selected_titles if title in movies_dict]
             
             try:
                 # Appel API au backend Flask

@@ -10,8 +10,8 @@ import os
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
-from bq_service   import find_similar_users, get_recommendations_for_users, get_popular_movies
-from es_service   import autocomplete_titles
+from bq_service   import find_similar_users, get_recommendations_for_users, get_popular_movies, get_total_movie_count
+from es_service   import autocomplete_titles, fetch_all_movies_dict
 from tmdb_service import enrich_with_posters
 
 load_dotenv()
@@ -22,6 +22,15 @@ app = Flask(__name__)
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"}), 200
+
+@app.route("/movies/dict")
+def movies_dict():
+    """
+    GET /movies/dict
+    Retourne le dictionnaire de tous les films depuis ES pour initialiser les filtres du Frontend.
+    """
+    results = fetch_all_movies_dict()
+    return jsonify(results)
 
 
 @app.route("/autocomplete")
@@ -71,6 +80,13 @@ def recommend():
         "similar_users": similar_users,
         "results":       recommendations,
     })
+
+
+@app.route("/movies/count")
+def movies_count():
+    """GET /movies/count — Nombre total de films dans BigQuery."""
+    total = get_total_movie_count()
+    return jsonify({"total": total})
 
 
 @app.route("/movies/popular")

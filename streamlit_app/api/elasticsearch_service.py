@@ -1,91 +1,47 @@
 import os
-from elasticsearch import Elasticsearch
-from dotenv import load_dotenv
+import requests
 import streamlit as st
 
-load_dotenv()
+ML_BACKEND_URL = os.getenv("ML_BACKEND_URL", "http://127.0.0.1:5001")
 
-@st.cache_resource
-def get_es_client() -> Elasticsearch:
-    return Elasticsearch(
-        os.getenv("ES_ENDPOINT"),
-        api_key=os.getenv("ES_API_KEY"),
-    )
-
-
-@st.cache_data(ttl=3600)
-def fetch_all_titles() -> list[str]:
-    """Récupère tous les titres uniques depuis Elasticsearch (mis en cache 1h)."""
-    es = get_es_client()
+@st.cache_data(ttl=86400)
+def fetch_total_movie_count() -> int:
+    """Récupère le nombre total de films depuis BigQuery via le backend ML."""
     try:
-        response = es.search(
-            index="movies_v2",
-            body={
-                "size": 10000,
-                "_source": ["title"],
-                "query": {"match_all": {}},
-            },
-        )
-        hits = response["hits"]["hits"]
-        print(f"[ES] fetch_all_titles: {len(hits)} hits trouvés")
-        titles = sorted(set(hit["_source"]["title"] for hit in hits if "title" in hit["_source"]))
-        return titles
+        response = requests.get(f"{ML_BACKEND_URL}/movies/count", timeout=10)
+        response.raise_for_status()
+        return response.json().get("total", 0)
     except Exception as e:
-        print(f"[ES] fetch_all_titles ERREUR: {e}")
-        return []
+        print(f"[API] fetch_total_movie_count ERREUR: {e}")
+        return 0
+
 
 @st.cache_data(ttl=3600)
 def fetch_all_movies_dict() -> dict[str, dict]:
-    """Récupère tous les films (titre -> dict avec movieId, tmdbId, language) depuis Elasticsearch."""
-    es = get_es_client()
+    """Récupère tous les films depuis le backend ML (qui lui contacte Elasticsearch)."""
     try:
-        response = es.search(
-            index="movies_v2",
-            body={
-                "size": 10000,
-                "_source": ["title", "movieId", "tmdbId", "language"],
-                "query": {"match_all": {}},
-            },
-        )
-        hits = response["hits"]["hits"]
-        movies_dict = {}
-        for hit in hits:
-            src = hit["_source"]
-            if "title" in src:
-                movies_dict[src["title"]] = {
-                    "movieId": src.get("movieId"),
-                    "tmdbId": src.get("tmdbId"),
-                    "language": src.get("language")
-                }
-        return movies_dict
+        response = requests.get(f"{ML_BACKEND_URL}/movies/dict", timeout=15)
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
-        print(f"[ES] fetch_all_movies_dict ERREUR: {e}")
+        print(f"[API] fetch_all_movies_dict ERREUR: {e}")
         return {}
 
-
-
 def autocomplete_titles(query: str, limit: int = 5) -> list[str]:
-    """Retourne jusqu'à `limit` suggestions de titres via Elasticsearch bool_prefix."""
+    """Retourne des suggestions depuis le backend ML."""
     if not query or len(query) < 2:
         return []
 
-    es = get_es_client()
-
-    body = {
-        "size": limit,
-        "_source": ["title"],
-        "query": {
-            "multi_match": {
-                "query": query,
-                "type": "bool_prefix",
-                "fields": ["title", "title._2gram", "title._3gram"],
-            }
-        },
-    }
-
     try:
-        response = es.search(index="movies_v2", body=body)
-        hits = response["hits"]["hits"]
-        return [hit["_source"]["title"] for hit in hits]
-    except Exception:
+        response = requests.get(
+            f"{ML_BACKEND_URL}/autocomplete", 
+            params={"q": query, "limit": limit},
+            timeout=5
+        )
+        response.raise_for_status()
+        data = response.json()
+        suggestions = data.get("suggestions", [])
+        return [s.get("title") for s in suggestions if isinstance(s, dict) and "title" in s]
+    except Exception as e:
+        print(f"[API] autocomplete_titles ERREUR: {e}")
         return []
