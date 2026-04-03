@@ -29,6 +29,12 @@ def show_movie_detail_page(movie_id):
     
     if st.button("⬅️ Retour au catalogue"):
         del st.session_state.view_movie_id
+        if "selected_tmdb_id" in st.session_state:
+            del st.session_state.selected_tmdb_id
+        if "selected_movie_id" in st.session_state:
+            del st.session_state.selected_movie_id
+        if "selected_movie_title" in st.session_state:
+            del st.session_state.selected_movie_title
         st.rerun()
     
     with st.spinner("Chargement de la fiche..."):
@@ -56,7 +62,13 @@ def show_movie_detail_page(movie_id):
             
         with like_col:
             movies_dict = fetch_all_movies_dict()
-            m_ml_id = _find_movie_id(movies_dict, movie.title, movie_id) if movies_dict else None
+
+            # ✅ Priorité au movieId déjà transmis depuis la galerie / recherche
+            m_ml_id = st.session_state.get("selected_movie_id")
+
+            # ✅ Fallback uniquement si absent
+            if not m_ml_id and movies_dict:
+                m_ml_id = _find_movie_id(movies_dict, movie.title, movie_id)
 
             if m_ml_id:
                 is_liked = m_ml_id in st.session_state.get("liked_movies", set())

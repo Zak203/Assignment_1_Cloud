@@ -2,11 +2,12 @@ import streamlit as st
 import requests
 import os
 import re
-from api.elasticsearch_service import fetch_all_movies_dict, fetch_total_movie_count
-from api.services import fetch_genres, fetch_filtered_movies
-from ui.interactions import toggle_like, get_poster_url
+from api.elasticsearch_service import fetch_all_movies_dict
+from api.services import fetch_genres, fetch_filtered_movies, fetch_tmdb_movie_details
+from ui.interactions import toggle_like
 
 ML_BACKEND_URL = os.getenv("ML_BACKEND_URL", "http://127.0.0.1:5001")
+
 
 def fix_title(raw_title):
     """Supprime l'année et corrige les articles inversés : 'Matrix, The (1999)' → 'The Matrix'"""
@@ -18,64 +19,92 @@ def fix_title(raw_title):
         return f"{article} {m.group(1).strip()}"
     return t
 
-def view_details(tmdb_id):
+
+def view_details(tmdb_id, movie_id=None, title=None):
     st.session_state.view_movie_id = tmdb_id
+    st.session_state.selected_tmdb_id = tmdb_id
+    st.session_state.selected_movie_id = movie_id
+    st.session_state.selected_movie_title = title
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def get_detail_poster_url(tmdb_id, fallback_url=None):
+    if not tmdb_id:
+        return fallback_url
+    try:
+        movie = fetch_tmdb_movie_details(tmdb_id)
+        if movie and getattr(movie, "poster_url", None):
+            return movie.poster_url
+    except Exception:
+        pass
+    return fallback_url
+
 
 def fetch_popular_movies(top_n=150):
     try:
         resp = requests.get(f"{ML_BACKEND_URL}/movies/popular?top_n={top_n}&posters=false", timeout=10)
         resp.raise_for_status()
         return resp.json().get("results", [])
-    except:
+    except Exception:
         return []
+
 
 def fetch_recommendations(movie_ids, top_n=150):
     try:
-        resp = requests.post(f"{ML_BACKEND_URL}/recommend", json={"movie_ids": list(movie_ids), "top_n": top_n, "posters": False}, timeout=30)
+        resp = requests.post(
+            f"{ML_BACKEND_URL}/recommend",
+            json={"movie_ids": list(movie_ids), "top_n": top_n, "posters": False},
+            timeout=30
+        )
         resp.raise_for_status()
         return resp.json().get("results", [])
-    except:
+    except Exception:
         return []
 
-def apply_ml_filters(movies, genres, min_rating, min_year, target_language, movies_dict):
-    if not movies: return []
+
+def apply_ml_filters(movies, genres, min_rating, year_range, target_language, movies_dict):
+    if not movies:
+        return []
+
+    min_year, max_year = year_range
     filtered = []
     min_ml_score = min_rating / 5.0
+
     for m in movies:
         if genres:
-            m_genres = set(m.get('genres', '').split('|'))
+            m_genres = set((m.get('genres') or '').split('|'))
             if not any(g in m_genres for g in genres):
                 continue
+
         r = m.get('score') or m.get('avg_rating', 0)
         if min_rating > 0 and r < min_ml_score:
             continue
-        if min_year > 1900:
-            # Ancré en fin de chaîne pour éviter de matcher un chiffre au milieu du titre
-            # ex: "Mission 2020 (1981)" → on veut 1981, pas 2020
-            raw_title = m.get('title') or ''
-            match = re.search(r'\((\d{4})\)\s*$', raw_title)
-            year = int(match.group(1)) if match else 0
-            if year < min_year:
-                continue
+
+        raw_title = m.get('title') or ''
+        match = re.search(r'\((\d{4})\)\s*$', raw_title)
+        year = int(match.group(1)) if match else 0
+        if year and (year < min_year or year > max_year):
+            continue
+
         if target_language:
             info = movies_dict.get(m.get('title'), {})
             if info.get('language') != target_language:
                 continue
+
         filtered.append(m)
+
     return filtered
 
+
 def render_unified_movie_gallery(title, items, is_objects=False, salt="", movies_dict=None):
-    if not items: return
-    
-    st.markdown(f"<div class='row-title' style='margin-bottom: 16px; margin-top: 20px; font-weight: bold; color:white;'>{title}</div>", unsafe_allow_html=True)
+    if not items:
+        return
+
+    st.markdown(
+        f"<div class='row-title' style='margin-bottom: 16px; margin-top: 20px; font-weight: bold; color:white;'>{title}</div>",
+        unsafe_allow_html=True
+    )
     display_items = items[:20] if not is_objects else items
-    
-    for m in display_items:
-        tmdb_id = m.tmdb_id if is_objects else (m.get("tmdbId") or (movies_dict.get(m.get("title", ""), {}) if getattr(m, 'get', None) else {}).get("tmdbId"))
-        poster_url = None if is_objects else m.get("poster_url")
-        if not poster_url and tmdb_id:
-            if is_objects: m.poster_url = get_poster_url(tmdb_id)
-            else: m["poster_url"] = get_poster_url(tmdb_id)
 
     cols = st.columns(5)
     for idx, item in enumerate(display_items):
@@ -92,58 +121,99 @@ def render_unified_movie_gallery(title, items, is_objects=False, salt="", movies
             else:
                 title_str = item.get("title", "")
                 info = movies_dict.get(title_str, {}) if movies_dict else {}
-                # avg_rating de BigQuery est sur échelle 0-1 (rating_im) → convertir en /5
+
                 raw_avg = item.get("avg_rating", 0) or 0
                 rating = round(raw_avg * 5, 1) if raw_avg else 0
                 tmdb_id = item.get("tmdbId") or info.get("tmdbId")
                 m_ml_id = item.get("movieId") or info.get("movieId")
-                # score IA BigQuery est sur 0-1 → afficher en %
-                ml_score = round(float(item.get("score")) * 100) if item.get("score") else None
+
+                raw_score = item.get("score")
+                if raw_score is not None:
+                    raw_score = float(raw_score)
+                    if raw_score <= 1:
+                        ml_score = round(raw_score * 100)
+                    else:
+                        ml_score = round(raw_score)
+                    ml_score = max(0, min(100, ml_score))
+                else:
+                    ml_score = None
+
                 poster_url = item.get("poster_url")
                 genres_raw = item.get('genres', '') or info.get('genres', '')
                 lang = item.get('language', '') or info.get('language', '')
 
+            poster_url = get_detail_poster_url(tmdb_id, poster_url)
+
             clean_t = fix_title(title_str)
             ym = re.search(r'\((\d{4})\)', title_str)
             year = ym.group(1) if ym else ''
-            genres_disp = ' · '.join([g.strip() for g in (genres_raw.split('|') if isinstance(genres_raw, str) else []) if g.strip()][:2]) if genres_raw else ''
+            genres_disp = ' · '.join(
+                [g.strip() for g in (genres_raw.split('|') if isinstance(genres_raw, str) else []) if g.strip()][:2]
+            ) if genres_raw else ''
             lang_str = lang.upper() if isinstance(lang, str) and lang else ''
-            
+
             st.markdown("<div class='movie-card-container'>", unsafe_allow_html=True)
             if poster_url:
-                st.markdown(f"<img src='{poster_url}' style='width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:6px; box-shadow:0 4px 10px rgba(0,0,0,0.5);'>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<img src='{poster_url}' style='width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:6px; box-shadow:0 4px 10px rgba(0,0,0,0.5);'>",
+                    unsafe_allow_html=True
+                )
             else:
-                st.markdown("<div style='width:100%; aspect-ratio:2/3; background:#222; border-radius:6px; display:flex; align-items:center; justify-content:center; border:1px solid #333;'><span style='color:#666;'>Pas d'image</span></div>", unsafe_allow_html=True)
-                
+                st.markdown(
+                    "<div style='width:100%; aspect-ratio:2/3; background:#222; border-radius:6px; display:flex; align-items:center; justify-content:center; border:1px solid #333;'><span style='color:#666;'>Pas d'image</span></div>",
+                    unsafe_allow_html=True
+                )
+
             st.markdown(f"<div class='movie-info'><div class='movie-title'>{clean_t}</div>", unsafe_allow_html=True)
             st.markdown(f"<div class='movie-meta'>{year}{' • ' + lang_str if lang_str else ''}<br>{genres_disp}</div>", unsafe_allow_html=True)
-            if ml_score:
-                st.markdown(f"<div class='movie-meta' style='color: #46d369; font-weight: bold; margin-top:2px;'>🎯 Score IA : {ml_score}%</div>", unsafe_allow_html=True)
+            if ml_score is not None:
+                st.markdown(
+                    f"<div class='movie-meta' style='color: #46d369; font-weight: bold; margin-top:2px;'>🎯 Score IA : {ml_score}%</div>",
+                    unsafe_allow_html=True
+                )
             if rating:
                 st.markdown(f"<div class='movie-meta' style='margin-top:2px;'>⭐ {rating} / 5</div>", unsafe_allow_html=True)
             st.markdown("</div></div>", unsafe_allow_html=True)
-            
+
             c1, c2 = st.columns([1, 1])
             with c1:
                 if m_ml_id:
                     is_liked = m_ml_id in st.session_state.get("liked_movies", set())
                     lbl = "❌ Retirer" if is_liked else "🤍 Liker"
-                    fake_dict = {"movieId": m_ml_id, "title": title_str, "tmdbId": tmdb_id, "poster_url": poster_url}
-                    st.button(lbl, key=f"gal_like_{salt}_{idx}_{m_ml_id}", on_click=toggle_like, args=(fake_dict,), use_container_width=True)
+                    fake_dict = {
+                        "movieId": m_ml_id,
+                        "title": title_str,
+                        "tmdbId": tmdb_id,
+                        "poster_url": poster_url
+                    }
+                    st.button(
+                        lbl,
+                        key=f"gal_like_{salt}_{idx}_{m_ml_id}",
+                        on_click=toggle_like,
+                        args=(fake_dict,),
+                        use_container_width=True
+                    )
             with c2:
                 if tmdb_id:
-                    st.button("▶ Détails", key=f"gal_det_{salt}_{idx}_{tmdb_id}", on_click=view_details, args=(tmdb_id,), type="primary", use_container_width=True)
+                    st.button(
+                        "▶ Détails",
+                        key=f"gal_det_{salt}_{idx}_{tmdb_id}",
+                        on_click=view_details,
+                        args=(tmdb_id, m_ml_id, title_str),
+                        type="primary",
+                        use_container_width=True
+                    )
             st.write("")
+
 
 def show_netflix_home():
     movies_dict = fetch_all_movies_dict()
     all_titles = sorted(list(movies_dict.keys()))
-    total_movie_count = fetch_total_movie_count()
 
     if "liked_movies" not in st.session_state:
         st.session_state.liked_movies = set()
         st.session_state.liked_movies_data = {}
-    if 'page' not in st.session_state:
+    if "page" not in st.session_state:
         st.session_state.page = 1
 
     if st.session_state.get('is_loading_like', False):
@@ -154,7 +224,6 @@ def show_netflix_home():
 
     st.markdown("""
     <style>
-    /* === MASSIVE TOP RED GRADIENT BAR === */
     .stApp::before {
         content: '';
         position: fixed;
@@ -163,10 +232,9 @@ def show_netflix_home():
         background: linear-gradient(90deg, transparent 0%, #E50914 25%, #ff2d3a 50%, #E50914 75%, transparent 100%);
         z-index: 9999;
     }
-    
+
     .block-container { padding-top: 0.5rem !important; padding-bottom: 0 !important; }
-    
-    /* === NETFLIX TEXT GRADIENT === */
+
     .nf-title-wrap { display: flex; align-items: baseline; gap: 0; padding: 6px 0 10px 0; line-height: 1; }
     .nf-title-netflix {
         font-size: 2.8rem; font-weight: 900; letter-spacing: -1.5px;
@@ -176,26 +244,24 @@ def show_netflix_home():
     }
     .nf-title-unil { font-size: 2.8rem; font-weight: 200; letter-spacing: 10px; color: #fff; margin-left: 10px; text-transform: uppercase; }
 
-    /* === NAVIGATION BUTTONS AS PURE TEXT === */
     [data-testid="stHorizontalBlock"] button {
-        background-color: transparent !important; 
+        background-color: transparent !important;
         border: none !important;
         font-size: 1.05rem !important;
         box-shadow: none !important;
-        color: #b3b3b3 !important; 
+        color: #b3b3b3 !important;
         font-weight: 600 !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
     }
     [data-testid="stHorizontalBlock"] button:hover { color: #ffffff !important; }
     [data-testid="stHorizontalBlock"] button[kind="primary"] {
-        color: #E50914 !important; 
+        color: #E50914 !important;
         font-weight: 800 !important;
         border-bottom: 3px solid #E50914 !important;
         border-radius: 0 !important;
     }
 
-    /* === ULTRA CLEAN PRO FILTERS === */
     div[data-baseweb="select"] {
         min-width: 100% !important;
     }
@@ -223,7 +289,6 @@ def show_netflix_home():
         box-shadow: none !important;
     }
 
-    /* Texte affiché */
     div[data-baseweb="select"] span,
     div[data-baseweb="select"] input,
     div[data-baseweb="select"] div {
@@ -233,13 +298,11 @@ def show_netflix_home():
         letter-spacing: 0.2px !important;
     }
 
-    /* Placeholder */
     div[data-baseweb="select"] input::placeholder {
         color: #9f9f9f !important;
         opacity: 1 !important;
     }
 
-    /* Icône dropdown discrète */
     div[data-baseweb="select"] svg {
         display: inline-block !important;
         color: #8a8a8a !important;
@@ -247,12 +310,10 @@ def show_netflix_home():
         height: 16px !important;
     }
 
-    /* Supprime les séparateurs internes bizarres */
     div[data-baseweb="select"] * {
         box-shadow: none !important;
     }
 
-    /* Multi-select tags ultra propres */
     span[data-baseweb="tag"] {
         background: rgba(255,255,255,0.06) !important;
         border: 1px solid rgba(255,255,255,0.12) !important;
@@ -272,7 +333,6 @@ def show_netflix_home():
         height: 12px !important;
     }
 
-    /* Menu déroulant */
     ul[role="listbox"] {
         background: #111 !important;
         border: 1px solid rgba(255,255,255,0.08) !important;
@@ -294,8 +354,7 @@ def show_netflix_home():
         background: rgba(229,9,20,0.18) !important;
         color: #fff !important;
     }
-    
-    /* Multiselect Tags (Genres) */
+
     span[data-baseweb="tag"] {
         background-color: rgba(229,9,20,0.2) !important;
         border: 1px solid rgba(229,9,20,0.5) !important;
@@ -305,14 +364,12 @@ def show_netflix_home():
     span[data-baseweb="tag"] span { color: #fff !important; font-weight: 600 !important; }
     span[data-baseweb="tag"] svg { color: #fff !important; display: inline-block !important; width:12px !important; height:12px !important; }
 
-    /* === MOVIES DISPLAY === */
     .movie-card-container { margin-bottom: 20px; transition: transform 0.2s; }
     .movie-card-container:hover { transform: scale(1.03); }
     .movie-info { padding-top: 6px; }
     .movie-title { font-size: 0.85rem; font-weight: 700; color: #fff; line-height: 1.2; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
     .movie-meta { font-size: 0.75rem; color: #aaa; margin-top: 2px; }
-    
-    /* === BADGE PULSANT RECOMMANDATIONS === */
+
     @keyframes pulseRec { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.75)} }
     .reco-new-badge {
         display: block;
@@ -325,7 +382,6 @@ def show_netflix_home():
         animation: pulseRec 1.2s ease-in-out infinite;
     }
 
-    /* === LARGE MOVIE CARDS FOR TRENDING === */
     .large-movie-container { margin-bottom: 30px; transition: transform 0.2s; position: relative;}
     .large-movie-container:hover { transform: scale(1.02); }
     .large-movie-info { padding-top: 10px; }
@@ -335,14 +391,14 @@ def show_netflix_home():
     </style>
     """, unsafe_allow_html=True)
 
-    # ROW 1: Title + Filters
     col_t, col_lang, col_genre, col_rat, col_yr = st.columns([3.5, 1.2, 1.2, 1, 1])
     with col_t:
         st.markdown(
             "<div class='nf-title-wrap'>"
             "<span class='nf-title-netflix'>Netflix</span>"
             "<span class='nf-title-unil'>UNIL</span>"
-            "</div>", unsafe_allow_html=True
+            "</div>",
+            unsafe_allow_html=True
         )
     with col_lang:
         lang_options = {"Langue": None, "Anglais": "en", "Français": "fr", "Espagnol": "es", "Japonais": "ja", "Coréen": "ko"}
@@ -351,18 +407,30 @@ def show_netflix_home():
         genres_list = fetch_genres()
         genre = st.multiselect("Genre(s)", genres_list, placeholder="Genre", label_visibility="collapsed")
     with col_rat:
-        min_avg_rating = st.selectbox("Note", [0.0, 1.0, 2.0, 3.0, 4.0, 4.5], format_func=lambda x: f"Note ≥ {x}" if x > 0 else "Note", label_visibility="collapsed")
+        min_avg_rating = st.selectbox(
+            "Note",
+            [0.0, 1.0, 2.0, 3.0, 4.0, 4.5],
+            format_func=lambda x: f"Note ≥ {x}" if x > 0 else "Note",
+            label_visibility="collapsed"
+        )
     with col_yr:
-        released_after_year = st.selectbox("Année", [1900, 1980, 1990, 2000, 2010, 2020], format_func=lambda x: f"≥ {x}" if x > 1900 else "Année", label_visibility="collapsed")
+        year_range = st.slider(
+            "Année",
+            min_value=1890,
+            max_value=2026,
+            value=(1890, 2026),
+            step=1,
+            label_visibility="collapsed"
+        )
 
-    # ROW 2: Navigation and huge Search Bar
     if "current_tab" not in st.session_state:
         st.session_state.current_tab = "Accueil"
-    def set_tab(t): st.session_state.current_tab = t
+
+    def set_tab(t):
+        st.session_state.current_tab = t
 
     n_favs = len(st.session_state.get('liked_movies', set()))
 
-    # Make the search bar column much bigger (c_s = 4.5)
     c1, c2, c3, c4, c_s = st.columns([1.5, 2.5, 2.5, 1.5, 4.5])
     with c1:
         st.button("Accueil", key="nav_home", on_click=set_tab, args=("Accueil",), type="primary" if st.session_state.current_tab == "Accueil" else "secondary")
@@ -374,13 +442,16 @@ def show_netflix_home():
         st.button("Catalogue Complet", key="nav_cat", on_click=set_tab, args=("Catalogue Complet",), type="primary" if st.session_state.current_tab == "Catalogue Complet" else "secondary")
     with c4:
         st.button(f"Favoris ({n_favs})", key="nav_fav", on_click=set_tab, args=("Mes Favoris",), type="primary" if st.session_state.current_tab == "Mes Favoris" else "secondary")
-    
+
     def handle_search():
         val = st.session_state.live_search
         if val and val != "🔍 Chercher un film...":
             info = movies_dict.get(val)
             if info and info.get("tmdbId"):
                 st.session_state.view_movie_id = info["tmdbId"]
+                st.session_state.selected_tmdb_id = info.get("tmdbId")
+                st.session_state.selected_movie_id = info.get("movieId")
+                st.session_state.selected_movie_title = val
             st.session_state.live_search = "🔍 Chercher un film..."
 
     with c_s:
@@ -392,29 +463,24 @@ def show_netflix_home():
 
     st.markdown("<hr style='border-color:#333; margin:10px 0 25px 0;'>", unsafe_allow_html=True)
 
-    # === CONTENT ===
     if current_tab == "Accueil":
         with st.spinner("Chargement des tendances..."):
             popular_movies = fetch_popular_movies(top_n=30)
-            popular_movies = apply_ml_filters(popular_movies, genre, float(min_avg_rating), int(released_after_year), target_language, movies_dict)
+            popular_movies = apply_ml_filters(popular_movies, genre, float(min_avg_rating), year_range, target_language, movies_dict)
 
-            st.markdown(f"<div style='text-align:right; font-size:0.75rem; color:#555; margin-bottom:-25px;'>🍿 Catalogue complet : <b>{total_movie_count:,}</b> | 🎯 Indexés IA (BigQuery) : <b>{len(all_titles)}</b></div>", unsafe_allow_html=True)
             st.markdown("🔥 <span style='font-size:1.8rem; font-weight:800; color:#fff;'>Tendances Actuelles</span>", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
-            
-            # Using 4 large columns for huge posters natively!
+
             num_cols = 4
-            top_popular = popular_movies[:12] # show 12 huge movies
+            top_popular = popular_movies[:12]
             rows = [top_popular[i:i + num_cols] for i in range(0, len(top_popular), num_cols)]
-            
+
             for row_idx, row in enumerate(rows):
                 cols = st.columns(num_cols)
                 for i, m in enumerate(row):
                     with cols[i]:
                         tmdb_id = m.get("tmdbId")
-                        if not m.get("poster_url") and tmdb_id:
-                            m["poster_url"] = get_poster_url(tmdb_id)
-                        
+                        poster_url = get_detail_poster_url(tmdb_id, m.get("poster_url"))
                         t = m.get('title', '')
                         clean_t = fix_title(t)
                         ym = re.search(r'\((\d{4})\)', t)
@@ -422,20 +488,25 @@ def show_netflix_home():
                         genres_raw = m.get('genres', '') or ''
                         genres_disp = ' · '.join([g.strip() for g in genres_raw.split('|') if g.strip()][:2])
                         sc = m.get('avg_rating', 0) or 0
-                        # avg_rating BQ est sur 0-1 (rating_im) → convertir en /5
                         sc_txt = f"⭐ {round(sc * 5, 1)} / 5" if sc else ""
-                        
+
                         m_ml_id = m.get("movieId")
                         if not m_ml_id:
-                             info = movies_dict.get(t, {})
-                             m_ml_id = info.get("movieId")
+                            info = movies_dict.get(t, {})
+                            m_ml_id = info.get("movieId")
 
                         st.markdown("<div class='large-movie-container'>", unsafe_allow_html=True)
-                        if m.get('poster_url'):
-                            st.markdown(f"<img src='{m['poster_url']}' style='width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.6);'>", unsafe_allow_html=True)
+                        if poster_url:
+                            st.markdown(
+                                f"<img src='{poster_url}' style='width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.6);'>",
+                                unsafe_allow_html=True
+                            )
                         else:
-                            st.markdown("<div style='width:100%; aspect-ratio:2/3; background:#222; border-radius:10px; border:1px solid #333;'></div>", unsafe_allow_html=True)
-                        
+                            st.markdown(
+                                "<div style='width:100%; aspect-ratio:2/3; background:#222; border-radius:10px; border:1px solid #333;'></div>",
+                                unsafe_allow_html=True
+                            )
+
                         st.markdown(f"<div class='large-movie-info'><div class='large-movie-title'>{clean_t}</div>", unsafe_allow_html=True)
                         st.markdown(f"<div class='large-movie-meta'>{year} • {genres_disp}</div>", unsafe_allow_html=True)
                         st.markdown(f"<div class='large-movie-score'>{sc_txt}</div></div></div>", unsafe_allow_html=True)
@@ -445,19 +516,36 @@ def show_netflix_home():
                             if m_ml_id:
                                 is_liked = m_ml_id in st.session_state.get("liked_movies", set())
                                 heart_icon = "❌ Retirer" if is_liked else "🤍 Liker"
-                                fake_dict = {"movieId": m_ml_id, "title": t, "tmdbId": tmdb_id, "poster_url": m.get('poster_url')}
-                                st.button(heart_icon, key=f"big_like_{row_idx}_{i}_{m_ml_id}", on_click=toggle_like, args=(fake_dict,), use_container_width=True)
+                                fake_dict = {
+                                    "movieId": m_ml_id,
+                                    "title": t,
+                                    "tmdbId": tmdb_id,
+                                    "poster_url": poster_url
+                                }
+                                st.button(
+                                    heart_icon,
+                                    key=f"big_like_{row_idx}_{i}_{m_ml_id}",
+                                    on_click=toggle_like,
+                                    args=(fake_dict,),
+                                    use_container_width=True
+                                )
                         with btn_col2:
                             if tmdb_id:
-                                st.button("▶ Détails", key=f"big_det_{row_idx}_{i}_{tmdb_id}", on_click=view_details, args=(tmdb_id,), type="primary", use_container_width=True)
+                                st.button(
+                                    "▶ Détails",
+                                    key=f"big_det_{row_idx}_{i}_{tmdb_id}",
+                                    on_click=view_details,
+                                    args=(tmdb_id, m_ml_id, t),
+                                    type="primary",
+                                    use_container_width=True
+                                )
                         st.markdown("<br><br>", unsafe_allow_html=True)
 
     elif current_tab == "Recommandations":
-        st.markdown(f"<div style='text-align:right; font-size:0.75rem; color:#555; margin-bottom:-25px;'>🎯 Indexés IA (BigQuery) : <b>{len(all_titles)}</b></div>", unsafe_allow_html=True)
         if len(st.session_state.liked_movies) > 0:
             with st.spinner("L'IA calcule vos recommandations personnalisées..."):
                 recommendations = fetch_recommendations(st.session_state.liked_movies, top_n=100)
-                recommendations = apply_ml_filters(recommendations, genre, float(min_avg_rating), int(released_after_year), target_language, movies_dict)
+                recommendations = apply_ml_filters(recommendations, genre, float(min_avg_rating), year_range, target_language, movies_dict)
             if recommendations:
                 render_unified_movie_gallery("🎯 Vos Coups de Cœur", recommendations, salt="rec_full", movies_dict=movies_dict)
             else:
@@ -466,14 +554,13 @@ def show_netflix_home():
             st.info("💡 Likez quelques films pour activer l'IA ! En attendant, voici les tendances (Cold Start) :")
             with st.spinner("Chargement..."):
                 popular_movies = fetch_popular_movies(top_n=30)
-                popular_movies = apply_ml_filters(popular_movies, genre, float(min_avg_rating), int(released_after_year), target_language, movies_dict)
+                popular_movies = apply_ml_filters(popular_movies, genre, float(min_avg_rating), year_range, target_language, movies_dict)
                 render_unified_movie_gallery("🔥 Sélection Découverte", popular_movies, salt="cold", movies_dict=movies_dict)
 
     elif current_tab == "Mes Favoris":
-        st.markdown(f"<div style='text-align:right; font-size:0.75rem; color:#555; margin-bottom:-25px;'>🎯 Indexés IA (BigQuery) : <b>{len(all_titles)}</b></div>", unsafe_allow_html=True)
         if len(st.session_state.liked_movies) > 0:
             liked_list = list(st.session_state.liked_movies_data.values())
-            liked_list = apply_ml_filters(liked_list, genre, float(min_avg_rating), int(released_after_year), target_language, movies_dict)
+            liked_list = apply_ml_filters(liked_list, genre, float(min_avg_rating), year_range, target_language, movies_dict)
             if liked_list:
                 render_unified_movie_gallery("🤍 Mes Favoris", liked_list[::-1], salt="fav", movies_dict=movies_dict)
             else:
@@ -483,16 +570,19 @@ def show_netflix_home():
 
     elif current_tab == "Catalogue Complet":
         payload = {"page": st.session_state.page, "page_size": page_size}
-        if lang_options[language_label]: payload["language"] = lang_options[language_label]
-        if genre: payload["genre"] = "|".join(genre)
-        if float(min_avg_rating) > 0: payload["min_avg_rating"] = float(min_avg_rating)
-        if int(released_after_year) > 1900: payload["released_after"] = int(released_after_year)
+        if lang_options[language_label]:
+            payload["language"] = lang_options[language_label]
+        if genre:
+            payload["genre"] = "|".join(genre)
+        if float(min_avg_rating) > 0:
+            payload["min_avg_rating"] = float(min_avg_rating)
+        if year_range[0] > 1900:
+            payload["released_after"] = year_range[0]
 
         with st.spinner("Chargement du catalogue..."):
             catalog_movies = fetch_filtered_movies(payload)
 
         if catalog_movies:
-            st.markdown(f"<div style='text-align:right; font-size:0.75rem; color:#555; margin-bottom:-20px;'>🍿 Catalogue complet : <b>{total_movie_count:,}</b> | 🎯 Indexés IA (BigQuery) : <b>{len(all_titles)}</b></div>", unsafe_allow_html=True)
             render_unified_movie_gallery("🎬 Catalogue complet", catalog_movies, is_objects=True, salt="cat", movies_dict=movies_dict)
             col_prev, col_center, col_next = st.columns([1, 2, 1])
             with col_prev:
@@ -501,7 +591,10 @@ def show_netflix_home():
                         st.session_state.page -= 1
                         st.rerun()
             with col_center:
-                st.markdown(f'<p style="text-align:center; color:#aaa; margin-top:8px;">Page {st.session_state.page}</p>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<p style="text-align:center; color:#aaa; margin-top:8px;">Page {st.session_state.page}</p>',
+                    unsafe_allow_html=True
+                )
             with col_next:
                 if len(catalog_movies) == page_size:
                     if st.button("Suivant ➡️", key="btn_next"):

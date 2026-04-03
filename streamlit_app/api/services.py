@@ -72,6 +72,28 @@ def fetch_genres() -> list[str]:
     except requests.RequestException:
         return []
 
+def get_tmdb_preferred_poster(tmdb_id, api_key):
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{tmdb_id}/images?api_key={api_key}&include_image_language=en,null"
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+
+        posters = resp.json().get("posters", [])
+        if posters:
+            for p in posters:
+                if p.get("iso_639_1") == "en":
+                    return f"https://image.tmdb.org/t/p/w500{p['file_path']}"
+
+            for p in posters:
+                if p.get("iso_639_1") is None:
+                    return f"https://image.tmdb.org/t/p/w500{p['file_path']}"
+
+            return f"https://image.tmdb.org/t/p/w500{posters[0]['file_path']}"
+    except:
+        return None
+
+    return None
+
 def fetch_tmdb_movie_details(movie_id) -> MovieDetail | None:
     api_key = os.getenv('TMB_apikey', 'b26718e982f5c714c9bc4d5ba1f49dbd')
     
@@ -83,7 +105,39 @@ def fetch_tmdb_movie_details(movie_id) -> MovieDetail | None:
     try:
         response = requests.get(url)
         response.raise_for_status()
-        return MovieDetail.from_dict(response.json())
+        data = response.json()
+
+        # Essaie de récupérer une affiche EN en priorité
+        try:
+            images_url = f'https://api.themoviedb.org/3/movie/{movie_id}/images?api_key={api_key}&include_image_language=en,null'
+            images_response = requests.get(images_url, timeout=5)
+            images_response.raise_for_status()
+            posters = images_response.json().get("posters", [])
+
+            preferred_poster_path = None
+
+            for poster in posters:
+                if poster.get("iso_639_1") == "en":
+                    preferred_poster_path = poster.get("file_path")
+                    break
+
+            if not preferred_poster_path:
+                for poster in posters:
+                    if poster.get("iso_639_1") is None:
+                        preferred_poster_path = poster.get("file_path")
+                        break
+
+            if not preferred_poster_path and posters:
+                preferred_poster_path = posters[0].get("file_path")
+
+            if preferred_poster_path:
+                data["poster_path"] = preferred_poster_path
+
+        except requests.RequestException:
+            pass
+
+        return MovieDetail.from_dict(data)
+
     except requests.RequestException as e:
         st.error(f"Erreur de communication avec l'API TMDB: {e}")
         return None
