@@ -12,6 +12,7 @@ MODEL_REF  = f"{PROJECT_ID}.{DATASET}.mf_recommender"
 RATINGS    = f"{PROJECT_ID}.{DATASET}.Ratings_train"
 LINKS      = f"{PROJECT_ID}.{DATASET}.Links_train"
 MOVIES     = f"{PROJECT_ID}.{DATASET}.Movies_train"
+MOVIES_CATALOG = "project-8adb6d58-9682-4d77-8f2.Assignment_1.Movies"
 
 
 def print_sql_debug(query: str, params: list = None, results: list = None):
@@ -135,9 +136,9 @@ def get_recommendations_for_users(
 
 
 def get_total_movie_count() -> int:
-    """Retourne le nombre total de films distincts dans la table Movies_train."""
+    """Retourne le nombre total de films distincts dans le catalogue complet."""
     client = _get_client()
-    query = f"SELECT COUNT(DISTINCT movieId) AS total FROM `{MOVIES}`"
+    query = f"SELECT COUNT(DISTINCT movieId) AS total FROM `{MOVIES_CATALOG}`"
     try:
         rows = list(client.query(query).result())
         return rows[0].total if rows else 0
